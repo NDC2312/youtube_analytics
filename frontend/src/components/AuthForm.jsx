@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mail,
   Lock,
@@ -12,10 +12,35 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../api";
 
+const GoogleSignInBtn = ({ onGoogleResponse }) => {
+  const btnRef = useRef(null);
+
+  useEffect(() => {
+    if (!window.google || !btnRef.current) return;
+
+    // Reset lại nội dung để tránh lỗi render đè
+    btnRef.current.innerHTML = "";
+
+    window.google.accounts.id.initialize({
+      client_id: "596162162962-hhajtorejulr1jr7sbub5pmqqv4jt8b7.apps.googleusercontent.com",
+      callback: onGoogleResponse,
+    });
+
+    window.google.accounts.id.renderButton(btnRef.current, {
+      theme: "outline",
+      size: "large",
+      shape: "pill",
+      text: "signin_with",
+      width: 320,
+    });
+  }, [onGoogleResponse]);
+
+  return <div ref={btnRef}></div>;
+};
+
 export default function AuthForm({ onLogin, initialIsLogin = true }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const googleBtnRef = useRef(null);
 
   // mode: login | register | forgot
   const [authMode, setAuthMode] = useState(
@@ -47,27 +72,6 @@ export default function AuthForm({ onLogin, initialIsLogin = true }) {
     setShowSuccess(false);
     setForgotStep(1);
   }, [location.state, initialIsLogin]);
-
-  useEffect(() => {
-    if (!window.google || !googleBtnRef.current) return;
-    if (authMode !== "login" && authMode !== "register") return;
-
-    window.google.accounts.id.initialize({
-      client_id:
-        "596162162962-hhajtorejulr1jr7sbub5pmqqv4jt8b7.apps.googleusercontent.com",
-      callback: handleGoogleResponse,
-    });
-
-    googleBtnRef.current.innerHTML = "";
-
-    window.google.accounts.id.renderButton(googleBtnRef.current, {
-      theme: "outline",
-      size: "large",
-      shape: "pill",
-      text: "signin_with",
-      width: 320,
-    });
-  }, [authMode]);
 
   const resetForgotStates = () => {
     setForgotStep(1);
@@ -104,7 +108,7 @@ export default function AuthForm({ onLogin, initialIsLogin = true }) {
     resetForgotStates();
   };
 
-  const handleGoogleResponse = async (response) => {
+  const handleGoogleResponse = useCallback(async (response) => {
     try {
       setError("");
       setIsLoading(true);
@@ -122,7 +126,7 @@ export default function AuthForm({ onLogin, initialIsLogin = true }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate, onLogin]); // Đảm bảo đưa các hàm/biến từ bên ngoài vào dependency
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -506,7 +510,7 @@ export default function AuthForm({ onLogin, initialIsLogin = true }) {
                       </div>
 
                       <div className="mt-6 flex justify-center">
-                        <div ref={googleBtnRef}></div>
+                        <GoogleSignInBtn onGoogleResponse={handleGoogleResponse} />
                       </div>
                     </div>
 
