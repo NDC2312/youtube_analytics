@@ -110,7 +110,7 @@ TU_LOAI_BO_TIENG_VIET = {
     'nhỉ', 'nhé', 'nha', 'hả', 'luôn', 'ngay', # Từ đệm
     'chắc', 'tưởng', 'ngỡ', 'hình', 'như', # Phỏng đoán
     'từ', 'theo', 'do', 'bị', 'khi', 'lúc', 'nào', # Giới từ khác
-    'video','chỉ','nè',
+    'video','chỉ','nè', 'oi', 'co'
 }
 
 def lam_sach_van_ban(van_ban, xoa_tu_loai_bo=False): 

@@ -112,6 +112,17 @@ export default function CommentAnalysis({ data }) {
   const totalComments = data?.total_comments || 0;
   const topUsers = data?.top_users?.length > 0 ? data.top_users : [];
   const scatterData = data?.scatter_clusters?.length > 0 ? data.scatter_clusters : [];
+
+  //Lấy danh sách tên cụm động từ Backend trả về
+  const uniqueClusters = useMemo(() => {
+    if (!scatterData.length) return [];
+    return [...new Set(scatterData.map(item => item.cluster))].sort();
+  }, [scatterData]);
+
+  // Bộ màu và hình dáng cho các cụm
+  const scatterColors = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"];
+  const scatterShapes = ["circle", "triangle", "square", "diamond", "star"];
+
   const allComments = data?.all_comments?.length > 0 ? data.all_comments : [];
   const timeSeriesData = data?.time_series?.length > 0 ? data.time_series : [];
 
@@ -142,6 +153,8 @@ export default function CommentAnalysis({ data }) {
         if (filterType === 'SENTIMENT') return cmt.cam_xuc_du_doan === SENTIMENT_MAP[filterValue];
         if (filterType === 'WORD') return cmt.ban_goc?.toLowerCase().includes(filterValue.toLowerCase());
         if (filterType === 'EMOJI') return cmt.ban_goc?.includes(filterValue);
+        //Lọc bình luận theo cụm (Nhóm)
+        if (filterType === 'CLUSTER') return filterValue.startsWith(`Nhóm ${cmt.cum + 1}`);
         return false;
     });
   }, [filterType, filterValue, allComments]);
@@ -152,6 +165,8 @@ export default function CommentAnalysis({ data }) {
           case 'SENTIMENT': return `Nhóm cảm xúc: ${filterValue}`;
           case 'WORD': return `Chứa từ khóa: "${filterValue}"`;
           case 'EMOJI': return `Chứa Emoji: ${filterValue}`;
+          //Tiêu đề khi click vào biểu đồ phân cụm
+          case 'CLUSTER': return `Thuộc cụm: ${filterValue}`;
           default: return '';
       }
   };
@@ -386,19 +401,53 @@ export default function CommentAnalysis({ data }) {
         <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2">
           <Target className="w-5 h-5 text-indigo-500"/> Bản đồ Phân cụm nội dung
         </h3>
-        <div className="h-72 w-full bg-slate-50/50 rounded-2xl border border-slate-100">
+        
+        {/* Thêm chú thích nhỏ hướng dẫn người dùng click */}
+        <p className="text-xs text-slate-400 mb-2 italic">
+          🖱️ Nhấn vào tên nhóm ở dưới hoặc các điểm trên biểu đồ để xem bình luận
+        </p>
+        
+        <div className="h-96 w-full bg-slate-50/50 rounded-2xl border border-slate-100">
           {scatterData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <ScatterChart margin={{ top: 20, right: 20, bottom: 40, left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis type="number" dataKey="x" name="PCA 1" hide />
                 <YAxis type="number" dataKey="y" name="PCA 2" hide />
                 <ZAxis type="number" dataKey="z" range={[60, 400]} />
                 <RechartsTooltip content={<CustomScatterTooltip />} cursor={{ strokeDasharray: '3 3' }} />
-                <Legend wrapperStyle={{fontSize: '12px'}}/>
-                <Scatter name="Nhóm 1" data={scatterData.filter(c => c.cluster === 'Nhóm 0')} fill="#3b82f6" shape="circle" />
-                <Scatter name="Nhóm 2" data={scatterData.filter(c => c.cluster === 'Nhóm 1')} fill="#ef4444" shape="triangle" />
-                <Scatter name="Nhóm 3" data={scatterData.filter(c => c.cluster === 'Nhóm 2')} fill="#10b981" shape="square" />
+                
+                {/* Thêm sự kiện onClick và đổi trỏ chuột */}
+                <Legend 
+                  verticalAlign="bottom" 
+                  wrapperStyle={{ fontSize: '12px', paddingTop: '20px', cursor: 'pointer' }} 
+                  onClick={(e) => {
+                    if(e && e.value) {
+                      setFilterType('CLUSTER');
+                      setFilterValue(e.value);
+                      setModalOpen(true);
+                    }
+                  }}
+                />
+                
+                {uniqueClusters.map((clusterName, index) => (
+                   <Scatter 
+                     key={clusterName}
+                     name={clusterName} 
+                     data={scatterData.filter(c => c.cluster === clusterName)} 
+                     fill={scatterColors[index % scatterColors.length]} 
+                     shape={scatterShapes[index % scatterShapes.length]} 
+                     
+                     // [ĐÃ SỬA] Cho phép click trực tiếp vào các điểm chấm trên bản đồ
+                     className="cursor-pointer hover:opacity-80 transition-opacity"
+                     onClick={() => {
+                        setFilterType('CLUSTER');
+                        setFilterValue(clusterName);
+                        setModalOpen(true);
+                     }}
+                   />
+                ))}
+
               </ScatterChart>
             </ResponsiveContainer>
           ) : (

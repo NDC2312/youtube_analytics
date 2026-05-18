@@ -99,7 +99,163 @@ def phan_tich_nguoi_dung_hang_dau(df_binh_luan):
         
     return nguoi_dung_hang_dau
 
-def tao_du_lieu_bieu_do_phan_tan(df, toa_do_2d):
+# 1. TỪ ĐIỂN DÙNG CHUNG (Áp dụng cho mọi loại video)
+COMMON_THEMES = {
+    "Hỏi đáp & Giao lưu": [
+        'bạn ơi', 'anh ơi', 'chị ơi', 'cho hỏi', 'làm sao', 'thế nào', 'ở đâu', 'giá', 'nhiêu', 
+        'địa chỉ', 'giúp mình', 'tại sao', 'có nên', 'thay bằng', 'được không', 'với ạ', 'hỏi', 'khi nào'
+    ],
+    "Khen ngợi & Ủng hộ": [
+        'tuyệt vời', 'xuất sắc', 'đỉnh', 'số 1', 'quá hay', 'cảm ơn', 'cám ơn', 'thank', 'chúc', 'thành công', 
+        'ủng hộ', 'đăng ký', 'sub', 'like', 'triệu view', 'rất thích', 'đam mê', 'xem mãi', 'video hay', 'hy vọng',
+        'nhẹ nhàng', 'ngóng', 'hóng'
+    ],
+    "Phê bình & Góp ý": [
+        'tệ', 'chán', 'thất vọng', 'dở', 'không ngon', 'phí', 'sai', 'dài dòng', 'nói nhiều', 'ồn', 
+        'nhỏ quá', 'không nghe', 'mờ', 'chóng mặt', 'cần cải thiện', 'góp ý', 'chưa được', 'hơi mặn', 'hơi ngọt',
+        'bó tay', 'ác', 'tàn nhẫn', 'ích kỷ', 'nát', 'khốn nạn'
+    ]
+}
+
+# 2. TỪ ĐIỂN ĐẶC THÙ THEO THỂ LOẠI VIDEO (Context-Aware)
+THEMES_BY_CATEGORY = {
+    "COOKING": {
+        "Thảo luận Công thức & Nguyên liệu": ['gia vị', 'tương', 'mắm', 'muối', 'đường', 'bột ngọt', 'hành', 'tỏi', 'ớt', 'chanh', 'nấu', 'chiên', 'xào', 'nướng', 'nhiệt độ', 'phút', 'gam'],
+        "Đánh giá Hương vị & Trải nghiệm": ['chua', 'cay', 'mặn', 'ngọt', 'thơm', 'béo', 'ngậy', 'đậm đà', 'vừa miệng', 'giòn', 'mềm', 'dai', 'sượng', 'ngon', 'thèm', 'bắt mắt']
+    },
+    "VLOG": {
+        "Địa điểm & Di chuyển": ['đường', 'xe', 'phố', 'cảnh', 'chỗ', 'du lịch', 'đi lại', 'khách sạn', 'chuyến đi', 'thời tiết', 'phong cảnh', 'chỗ này', 'địa điểm'],
+        "Trải nghiệm & Cảm xúc": ['đẹp', 'vui', 'thích', 'kỷ niệm', 'tuyệt vời', 'yên bình', 'chill', 'sợ', 'thú vị', 'đã quá', 'kỷ niệm']
+    },
+    "TALKSHOW": {
+        "Quan điểm & Bài học": ['quan điểm', 'ý nghĩa', 'bài học', 'sâu sắc', 'chia sẻ', 'câu chuyện', 'đồng tình', 'thực tế', 'thấm', 'đúng quá'],
+        "Khách mời & MC": ['khách mời', 'mc', 'host', 'nói chuyện', 'duyên', 'tinh tế', 'anh', 'chị', 'chuyên gia', 'dẫn dắt']
+    },
+    "NEWS": {
+        "Sự kiện & Cập nhật": ['vụ việc', 'thông tin', 'tin tức', 'cập nhật', 'hiện trường', 'nạn nhân', 'cơ quan', 'pháp luật', 'xét xử', 'báo cáo'],
+        "Quan điểm Cộng đồng": ['bức xúc', 'phẫn nộ', 'ủng hộ', 'xử lý', 'nghiêm minh', 'hy vọng', 'cảm thương', 'tội nghiệp', 'mong']
+    },
+    "ENTERTAINMENT": {
+        "Nội dung & Kịch bản": ['hài', 'cười', 'kịch bản', 'plot twist', 'cuốn', 'nhạt', 'sượng', 'diễn', 'nội dung', 'cốt truyện'],
+        "Nhân vật & Diễn xuất": ['diễn viên', 'nhân vật', 'diễn xuất', 'đẹp trai', 'xinh', 'biểu cảm', 'hát', 'giọng', 'nhập vai']
+    }
+}
+
+# Thêm tham số category vào hàm
+def dat_ten_cho_cum(df, category="GENERAL"):
+    mapping_ten_cum = {}
+    cum_ids = df['cum'].unique()
+    
+    # Lắp ráp bộ từ điển dựa trên thể loại video. 
+    # Nếu không nhận diện được, mặc định dùng giải trí chung (ENTERTAINMENT)
+    current_category_themes = THEMES_BY_CATEGORY.get(category.upper(), THEMES_BY_CATEGORY["ENTERTAINMENT"])
+    
+    # Gộp từ điển chung và từ điển đặc thù lại với nhau
+    ACTIVE_THEMES = {**COMMON_THEMES, **current_category_themes}
+
+    def tao_n_grams(van_ban):
+        cac_tu = re.findall(r'\b[^\W\d_]+\b', str(van_ban).lower())
+        ngrams = []
+        n = len(cac_tu)
+        for i in range(n):
+            t1 = cac_tu[i]
+            # LUẬT 1: Bỏ qua các từ chỉ có 1 ký tự (như 't', 'k') và stop words
+            if len(t1) < 2 or t1 in TU_LOAI_BO_TIENG_VIET: 
+                continue
+                
+            ngrams.append(t1)
+            
+            if i < n - 1:
+                t2 = cac_tu[i+1]
+                if len(t2) >= 2 and t2 not in TU_LOAI_BO_TIENG_VIET:
+                    ngrams.append(f"{t1} {t2}")
+                    
+            if i < n - 2:
+                t3 = cac_tu[i+2]
+                if len(t3) >= 2 and t3 not in TU_LOAI_BO_TIENG_VIET:
+                    ngrams.append(f"{t1} {cac_tu[i+1]} {t3}")
+        return ngrams
+
+    toan_bo_ngrams = []
+    for text in df['ban_goc']:
+        toan_bo_ngrams.extend(tao_n_grams(text))
+    dem_toan_cuc = Counter(toan_bo_ngrams)
+
+    chu_de_da_chon = set()
+
+    for cum_id in cum_ids:
+        df_cum = df[df['cum'] == cum_id]
+        
+        ngrams_trong_cum = []
+        for text in df_cum['ban_goc']:
+            ngrams_trong_cum.extend(tao_n_grams(text))
+        dem_trong_cum = Counter(ngrams_trong_cum)
+        
+        diem_dac_trung = {}
+        for tu, count in dem_trong_cum.items():
+            if count >= 2 or len(df_cum) < 5:
+                ty_le = count / dem_toan_cuc[tu]
+                diem_dac_trung[tu] = count * (ty_le ** 2)
+        
+        # Dùng bộ từ điển ACTIVE_THEMES đã được gộp
+        diem_chu_de = {theme: 0.0 for theme in ACTIVE_THEMES}
+        
+        for theme, keywords in ACTIVE_THEMES.items():
+            for kw in keywords:
+                if kw in dem_trong_cum:
+                    diem_chu_de[theme] += diem_dac_trung.get(kw, 0)
+                    
+        for theme in diem_chu_de:
+            if theme in chu_de_da_chon:
+                diem_chu_de[theme] *= 0.2 
+                
+        chu_de_max = max(diem_chu_de, key=diem_chu_de.get)
+        diem_max = diem_chu_de[chu_de_max]
+        
+        # Ngưỡng chống nhiễu (Threshold = 1.5)
+        if diem_max >= 1.5:
+            chu_de_da_chon.add(chu_de_max)
+            mapping_ten_cum[cum_id] = f"Nhóm {cum_id + 1}: {chu_de_max}"
+            
+        #  Bắt buộc hiện từ khóa để thấy sự khác biệt
+        else:
+            # LUẬT 2: Thưởng điểm cho từ ghép. Ép hệ thống dùng từ ghép thay vì từ đơn.
+            tu_ung_vien = []
+            for tu, diem in diem_dac_trung.items():
+                so_tu = len(tu.split())
+                # Cụm 2 từ x1.5 điểm, Cụm 3 từ x2.0 điểm
+                diem_nang_cap = diem * (1.5 if so_tu == 2 else 2.0 if so_tu >= 3 else 1.0)
+                tu_ung_vien.append((tu, diem_nang_cap))
+                
+            top_tu_dac_trung = sorted(tu_ung_vien, key=lambda x: x[1], reverse=True)
+            
+            tu_chon = []
+            for tu, diem in top_tu_dac_trung:
+                bi_trung = False
+                for t in tu_chon:
+                    if tu in t or t in tu:
+                        bi_trung = True
+                        break
+                if not bi_trung:
+                    tu_chon.append(tu)
+                if len(tu_chon) == 2: 
+                    break
+            
+            ten_tu_khoa = ", ".join(tu_chon) if tu_chon else "Chung"
+            
+            cam_xuc_mode = df_cum['cam_xuc_du_doan'].mode()
+            cam_xuc = cam_xuc_mode[0] if not cam_xuc_mode.empty else "Neutral"
+            
+            if cam_xuc == "Positive": 
+                mapping_ten_cum[cum_id] = f"Nhóm {cum_id + 1}: Tích cực ({ten_tu_khoa})"
+            elif cam_xuc == "Negative": 
+                mapping_ten_cum[cum_id] = f"Nhóm {cum_id + 1}: Tiêu cực ({ten_tu_khoa})"
+            else: 
+                mapping_ten_cum[cum_id] = f"Nhóm {cum_id + 1}: Thảo luận ({ten_tu_khoa})"
+
+    return mapping_ten_cum
+
+def tao_du_lieu_bieu_do_phan_tan(df, toa_do_2d, mapping_ten_cum):
     if len(df) < 2:
         return []
 
@@ -115,7 +271,7 @@ def tao_du_lieu_bieu_do_phan_tan(df, toa_do_2d):
             "x": round(float(x), 2),
             "y": round(float(y), 2),
             "z": 100,
-            "cluster": f"Nhóm {hang['cum']}",
+            "cluster": mapping_ten_cum[hang['cum']], # Gán tên nhóm có chứa từ khóa
             "author": hang['tac_gia'],
             "content": hang['ban_goc'][:50] + "..."
         })
@@ -305,7 +461,16 @@ def analyze_video_task(self, url_youtube, so_luong_binh_luan):
     du_lieu_toan_bo_binh_luan = df[['id', 'tac_gia', 'ban_goc', 'cam_xuc_du_doan', 'so_like', 'cum', 'diem_cam_xuc']].to_dict(orient='records')
     du_lieu_chuoi_thoi_gian = phan_tich_chuoi_thoi_gian(df)
     du_lieu_nguoi_dung_hang_dau = phan_tich_nguoi_dung_hang_dau(df)
-    du_lieu_phan_tan = tao_du_lieu_bieu_do_phan_tan(df, X_pca_2d)
+
+    # Tạo tên cho cụm và gán vào Scatter Data
+    # Lấy thể loại video từ bộ tóm tắt (Mặc định là GENERAL nếu không có)
+    # Dữ liệu trả về thường ở dạng "COOKING", "VLOG", v.v...
+    loai_video = video_summary_data.get("category", "GENERAL")
+    
+    # Truyền thể loại video vào để hệ thống chọn đúng bộ từ điển!
+    mapping_ten_cum = dat_ten_cho_cum(df, category=loai_video)
+    
+    du_lieu_phan_tan = tao_du_lieu_bieu_do_phan_tan(df, X_pca_2d, mapping_ten_cum)
 
     # TRẢ VỀ DỮ LIỆU ĐẦY ĐỦ
     return {
